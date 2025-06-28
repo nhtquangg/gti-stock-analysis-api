@@ -1,0 +1,68 @@
+# 🚀 GTI Stock Analysis API - Git Ignore for Deployment
+
+# Python
+__pycache__/
+*.py[cod]
+*$py.class
+*.so
+.Python
+build/
+dist/
+*.egg-info/
+*.egg
+
+# Virtual environments
+venv/
+env/
+.venv
+.env
+
+# IDE & Editor
+.vscode/
+.idea/
+*.swp
+*.swo
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Application specific
+logs/
+*.log
+temp/
+tmp/
+
+# Local development files
+config_local.py
+secrets.py
+
+# Windows batch files (not needed for cloud deployment)
+*.cmd
+*.ps1
+
+# Documentation files (EXCLUDE for security)
+knowledge_gti_v2.md  
+API_FOR_CUSTOMGPT.md
+custom_gpt.md
+DEPLOY_GUIDE.md
+Dockerfile.backup
+examples.py
+he_thong_dau_tu.md
+instructor_gti_pro_v2.md
+intrucstion_gpt.md
+ke_hoach.md
+OPTIMIZATION_SUMMARY.md
+QUICK_START.md
+test_patterns_mien_phi.py
+
+# Keep only ESSENTIAL files for API:
+# - main_api.py (core API)
+# - lay_data_stock.py (logic)  
+# - config.py (configuration)
+# - start.py (entry point)
+# - version_info.py (version)
+# - requirements.txt (dependencies)
+# - render.yaml (deployment config)
+# - README.md (minimal info only)
+# - .gitignore (git configuration) 
