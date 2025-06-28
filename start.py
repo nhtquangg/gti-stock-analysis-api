@@ -117,8 +117,9 @@ def main():
     debug = getattr(config, 'DEBUG', False)
     
     # Force disable reload in production environment
-    environment = os.getenv('ENVIRONMENT', 'development').lower()
-    enable_reload = debug and environment != 'production'
+    environment = os.getenv('ENVIRONMENT', 'development').lower().strip()
+    # Absolutely disable reload in production for any case
+    enable_reload = debug and environment != 'production' and environment == 'development'
     
     # Start server
     try:
