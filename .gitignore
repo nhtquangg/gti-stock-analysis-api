@@ -32,6 +32,12 @@ logs/
 *.log
 temp/
 tmp/
+cache/
+.cache/
+*.cache
+*.tmp
+.watchdog/
+*.pid
 
 # Local development files
 config_local.py

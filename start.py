@@ -19,21 +19,10 @@ def setup_logging():
     🔧 Setup logging configuration
     """
     log_level = getattr(config, 'LOG_LEVEL', 'INFO')
-    
-    # Create logs directory if not exists
-    log_dir = "logs"
-    if not os.path.exists(log_dir):
-        os.makedirs(log_dir)
+    environment = os.getenv('ENVIRONMENT', 'development').lower()
     
     # Configure logging
     log_format = '%(asctime)s - %(name)s - %(levelname)s - %(message)s'
-    
-    # File handler
-    file_handler = logging.FileHandler(
-        f"{log_dir}/gti_api_{datetime.now().strftime('%Y%m%d')}.log"
-    )
-    file_handler.setLevel(logging.INFO)
-    file_handler.setFormatter(logging.Formatter(log_format))
     
     # Console handler  
     console_handler = logging.StreamHandler()
@@ -43,8 +32,22 @@ def setup_logging():
     # Root logger
     root_logger = logging.getLogger()
     root_logger.setLevel(logging.INFO)
-    root_logger.addHandler(file_handler)
     root_logger.addHandler(console_handler)
+    
+    # Only add file logging in development, skip in production to avoid file watcher issues
+    if environment == 'development':
+        # Create logs directory if not exists
+        log_dir = "logs"
+        if not os.path.exists(log_dir):
+            os.makedirs(log_dir)
+        
+        # File handler
+        file_handler = logging.FileHandler(
+            f"{log_dir}/gti_api_{datetime.now().strftime('%Y%m%d')}.log"
+        )
+        file_handler.setLevel(logging.INFO)
+        file_handler.setFormatter(logging.Formatter(log_format))
+        root_logger.addHandler(file_handler)
     
     return root_logger
 
@@ -113,14 +116,20 @@ def main():
     port = config.API_PORT
     debug = getattr(config, 'DEBUG', False)
     
+    # Force disable reload in production environment
+    environment = os.getenv('ENVIRONMENT', 'development').lower()
+    enable_reload = debug and environment != 'production'
+    
     # Start server
     try:
         logger.info(f"🌐 Starting server on {host}:{port}")
+        logger.info(f"🔧 Environment: {environment}")
+        logger.info(f"🔄 Auto-reload: {enable_reload}")
         uvicorn.run(
             "main_api:app",
             host=host,
             port=port,
-            reload=debug,
+            reload=enable_reload,
             log_level="info",
             access_log=True,
             loop="auto"
