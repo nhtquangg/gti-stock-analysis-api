@@ -34,8 +34,8 @@ def setup_logging():
     root_logger.setLevel(logging.INFO)
     root_logger.addHandler(console_handler)
     
-    # Only add file logging in development, skip in production to avoid file watcher issues
-    if environment == 'development':
+    # Only add file logging in development, completely skip in production to avoid file watcher issues
+    if environment == 'development' and environment != 'production':
         # Create logs directory if not exists
         log_dir = "logs"
         if not os.path.exists(log_dir):
@@ -100,6 +100,12 @@ def main():
     """
     🚀 Main function to start the API server
     """
+    # Force disable watchfiles globally for production
+    environment = os.getenv('ENVIRONMENT', 'development').lower().strip()
+    if environment == 'production':
+        os.environ['WATCHFILES_FORCE_POLLING'] = 'false'
+        os.environ['UVICORN_WATCHFILES_ENABLED'] = 'false'
+    
     # Setup logging
     logger = setup_logging()
     logger.info("🚀 Starting GTI Stock Analysis API...")
@@ -126,15 +132,36 @@ def main():
         logger.info(f"🌐 Starting server on {host}:{port}")
         logger.info(f"🔧 Environment: {environment}")
         logger.info(f"🔄 Auto-reload: {enable_reload}")
-        uvicorn.run(
-            "main_api:app",
-            host=host,
-            port=port,
-            reload=enable_reload,
-            log_level="info",
-            access_log=True,
-            loop="auto"
-        )
+        
+        # Force disable watchfiles in production by setting specific config
+        if environment == 'production':
+            # Import app directly and run with minimal config for production
+            from main_api import app
+            import uvicorn
+            
+            config_obj = uvicorn.Config(
+                app,
+                host=host,
+                port=port,
+                log_level="info",
+                access_log=False,  # Disable access log in production to reduce noise
+                reload=False,      # Absolutely no reload
+                use_colors=False,  # Disable colors for production logs
+                workers=1          # Single worker to avoid file watching
+            )
+            server = uvicorn.Server(config_obj)
+            server.run()
+        else:
+            # Development mode with normal uvicorn.run
+            uvicorn.run(
+                "main_api:app",
+                host=host,
+                port=port,
+                reload=enable_reload,
+                log_level="info",
+                access_log=True,
+                loop="auto"
+            )
     except KeyboardInterrupt:
         logger.info("🛑 Server stopped by user")
         print("\n👋 GTI API stopped. Goodbye!")
