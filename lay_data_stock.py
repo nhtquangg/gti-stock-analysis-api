@@ -285,9 +285,10 @@ def phan_tich_pattern_results(df: pd.DataFrame, ma_co_phieu: str):
     else:
         print(f"   ➡️  Xu hướng: TRUNG TÍNH")
     
+    # ✅ GIẢI PHÁP: Ép kiểu về int tiêu chuẩn của Python trước khi trả về
     return {
-        'bullish_score': bullish_score,
-        'bearish_score': bearish_score,
+        'bullish_score': int(bullish_score),
+        'bearish_score': int(bearish_score),
         'current_patterns': current_patterns,
         'latest_data': latest
     }
@@ -724,12 +725,12 @@ def comprehensive_gti_analysis(stock_symbol: str, start_date: str = None, end_da
         print("⚡ BƯỚC 9: Tính toán Enhanced Scoring...")
         latest = df_patterns.iloc[-1]
         
-        # GTI Score (0-4)
+        # GTI Score (0-4) - ép kiểu về int Python
         gti_score = int(latest['gti_score']) if pd.notna(latest['gti_score']) else 0
         
-        # Basic Pattern Scores
-        basic_bullish = pattern_results.get('bullish_score', 0)
-        basic_bearish = pattern_results.get('bearish_score', 0)
+        # Basic Pattern Scores - đảm bảo kiểu int Python
+        basic_bullish = int(pattern_results.get('bullish_score', 0))
+        basic_bearish = int(pattern_results.get('bearish_score', 0))
         
         # Large Pattern Scores (×2 points)
         large_patterns = ['cup_handle', 'bull_flag', 'base_n_break', 'ascending_triangle']
@@ -812,7 +813,7 @@ def comprehensive_gti_analysis(stock_symbol: str, start_date: str = None, end_da
             
             # GTI Analysis
             "gti_analysis": {
-                "gti_score": gti_score,
+                "gti_score": int(gti_score),
                 "gti_criteria": {
                     "trend_check": bool(latest['gti_trend_check']) if pd.notna(latest['gti_trend_check']) else False,
                     "recent_breakout": bool(latest['gti_recent_breakout']) if pd.notna(latest['gti_recent_breakout']) else False,
@@ -823,9 +824,9 @@ def comprehensive_gti_analysis(stock_symbol: str, start_date: str = None, end_da
             
             # Enhanced Pattern Analysis
             "pattern_analysis": {
-                "basic_bullish_score": basic_bullish,
-                "basic_bearish_score": basic_bearish,
-                "large_patterns_score": large_bullish_score,
+                "basic_bullish_score": int(basic_bullish),
+                "basic_bearish_score": int(basic_bearish),
+                "large_patterns_score": int(large_bullish_score),
                 "current_patterns": pattern_results.get('current_patterns', []),
                 "pattern_summary": f"{basic_bullish}B/{basic_bearish}Be + {large_bullish_score//2}L"
             },
@@ -836,7 +837,7 @@ def comprehensive_gti_analysis(stock_symbol: str, start_date: str = None, end_da
             
             # Combined Analysis
             "combined_analysis": {
-                "base_score": base_score,
+                "base_score": int(base_score),
                 "market_adjustment": market_adjustment,
                 "sector_adjustment": sector_adjustment,
                 "total_score": round(combined_score, 2),
