@@ -15,8 +15,17 @@ from lay_data_stock import (
     get_market_context,
     get_sector_analysis,
     comprehensive_gti_analysis,
-    prepare_news_search_context
+    prepare_news_search_context,
+    market_scan_parallel,
+    market_scan_by_category,
+    market_scan_top_picks,
+    scan_single_stock
 )
+
+from config import GTIConfig
+
+# 🚀 Import Cache Manager
+from cache_manager import gti_cache, cache_stock_analysis, cache_market_scan
 
 # Khởi tạo ứng dụng FastAPI
 app = FastAPI(
@@ -25,7 +34,7 @@ app = FastAPI(
     version="3.0.0",
     contact={
         "name": "GTI Analysis System",
-        "url": "https://github.com/your-username/stock-gti-analysis",
+        "url": "https://github.com/nhtquangg/gti-stock-analysis-api",
     },
 )
 
@@ -33,25 +42,63 @@ app = FastAPI(
 def read_root():
     return {
         "message": "🚀 Chào mừng đến với GTI Stock Analysis API!",
-        "he_thong": "GTI PRO v2.0 - Growth Trading Intelligence + Enhanced Pattern Detection",
-        "phien_ban": "3.2.0",
+        "he_thong": "GTI PRO v3.0 - Growth Trading Intelligence + Market Scanner",
+        "phien_ban": "3.3.0",
         "tinh_nang": [
             "🔥 GTI Core Analysis (4 tiêu chí cốt lõi)",
             "🎯 Enhanced Pattern Detection (16 patterns: 12 basic + 4 large)",
             "🌊 Market Context Analysis (VNINDEX + Sector)",
             "📰 News Search Integration (cho ChatGPT)",
             "⚡ Combined Scoring (-5 to +18 range)",
-            "🚀 Comprehensive Analysis API"
+            "🚀 Comprehensive Analysis API",
+            "🔍 Market Scanner - Quét toàn bộ thị trường",
+            "🏆 Top Picks - Tìm mã tốt nhất",
+            "🏢 Sector Analysis - Phân tích theo ngành",
+            "🎯 Custom List Scanning"
         ],
         "endpoints": {
-            "/phan-tich/{ma_co_phieu}": "Phân tích GTI cơ bản",
-            "/full-analysis/{ma_co_phieu}": "🚀 GTI PRO v2.0 - Phân tích toàn diện",
-            "/full-analysis-legacy/{ma_co_phieu}": "Phân tích đầy đủ GTI + Patterns (legacy)",
-            "/news-context/{ma_co_phieu}": "News search context cho ChatGPT",
-            "/gti-info": "Thông tin về hệ thống GTI",
-            "/patterns-info": "Thông tin về 16 patterns (12 basic + 4 large)"
+            "individual_analysis": {
+                "/phan-tich/{ma_co_phieu}": "Phân tích GTI cơ bản",
+                "/full-analysis/{ma_co_phieu}": "🚀 GTI PRO v3.0 - Phân tích toàn diện",
+                "/news-context/{ma_co_phieu}": "News search context cho ChatGPT"
+            },
+            "market_scanning": {
+                "/market-scan": "🔍 Quét thị trường theo danh mục (VN30, ngành, popular)",
+                "/market-scan/vn30": "🎯 Quick VN30 scan với tiêu chí cao",
+                "/market-scan/top-picks": "🏆 TOP picks từ tất cả sectors",
+                "/market-scan/sector/{sector}": "🏢 Quét theo ngành cụ thể (~40 mã)",
+                "/market-scan/custom": "🎯 Quét danh sách tùy chỉnh",
+                "/market-scan/quick-check/{stock}": "⚡ Kiểm tra nhanh một mã"
+            },
+            "system_info": {
+                "/gti-info": "Thông tin về hệ thống GTI",
+                "/patterns-info": "Thông tin về 16 patterns (12 basic + 4 large)"
+            }
         },
-        "vi_du": "/full-analysis/FPT"
+        "vi_du_su_dung": {
+            "phan_tich_don_le": "/full-analysis/FPT",
+            "quet_vn30": "/market-scan/vn30",
+            "top_picks": "/market-scan/top-picks?limit=10",
+            "quet_ngan_hang": "/market-scan/sector/banking",
+            "quet_tuy_chinh": "/market-scan/custom?stocks=FPT,VIC,HPG,VCB",
+            "kiem_tra_nhanh": "/market-scan/quick-check/FPT"
+        },
+        "danh_muc_ho_tro": {
+            "stock_lists": ["vn30", "popular"],
+            "sectors": ["banking", "real_estate", "technology", "manufacturing", "consumer", "energy", "securities", "construction", "utilities", "transportation"],
+            "sector_sizes": {
+                "banking": "40 mã (từ big banks đến financial services)",
+                "real_estate": "40 mã (developers, construction, infrastructure)",
+                "technology": "40 mã (IT services, telecom, hardware, software)",
+                "manufacturing": "40 mã (steel, chemicals, electronics, machinery)",
+                "consumer": "40 mã (retail, F&B, personal care, tourism)",
+                "energy": "40 mã (oil & gas, power, renewable, mining)",
+                "securities": "40 mã (securities firms, asset management)",
+                "construction": "40 mã (construction, infrastructure, materials)",
+                "utilities": "40 mã (power, water, transport utilities)",
+                "transportation": "40 mã (airlines, shipping, logistics, ports)"
+            }
+        }
     }
 
 @app.get("/phan-tich/{ma_co_phieu}")
@@ -192,11 +239,11 @@ def full_analysis_legacy(ma_co_phieu: str):
         except:
             ngay_cap_nhat = datetime.now().strftime("%Y-%m-%d")
         
-        # Tính điểm tổng hợp
+        # Tính điểm tổng hợp - đảm bảo tất cả là int Python
         gti_score = int(latest['gti_score']) if pd.notna(latest['gti_score']) else 0
         bullish_score = int(pattern_results.get('bullish_score', 0))
         bearish_score = int(pattern_results.get('bearish_score', 0))
-        tong_diem = gti_score + bullish_score - bearish_score
+        tong_diem = int(gti_score + bullish_score - bearish_score)
         
         # Đánh giá tổng hợp
         if tong_diem >= 4:
@@ -511,3 +558,499 @@ def gti_info():
             "gti_signal": "Tín hiệu GTI (BUY/HOLD/AVOID)"
         }
     }
+
+@app.get("/market-scan")
+def market_scan_full(
+    category: str = "vn30",
+    min_gti_score: int = 2, 
+    min_combined_score: int = 3,
+    limit: Optional[int] = None
+):
+    """
+    🔍 MARKET SCANNER - Quét thị trường theo danh mục (SECTOR-BASED)
+    
+    Args:
+        category: Loại danh sách (vn30, popular, banking, real_estate, technology, etc.)
+        min_gti_score: Điểm GTI tối thiểu (0-4)
+        min_combined_score: Điểm tổng hợp tối thiểu (GTI + Pattern)
+        limit: Giới hạn số kết quả trả về (mặc định không giới hạn)
+    
+    Returns:
+        Danh sách các mã cổ phiếu đạt tiêu chí GTI, sắp xếp theo điểm số
+        
+    Available categories:
+        - vn30: VN30 stocks (30 mã blue-chip)
+        - popular: Popular stocks (8 mã phổ biến) 
+        - Sectors (~40 mã mỗi sector):
+          * banking, real_estate, technology, manufacturing
+          * consumer, energy, securities, construction
+          * utilities, transportation
+    """
+    try:
+        print(f"🔍 Market Scan Request: category={category}, min_gti={min_gti_score}, min_combined={min_combined_score}")
+        
+        # Validate parameters
+        if min_gti_score < 0 or min_gti_score > 4:
+            raise HTTPException(status_code=400, detail="min_gti_score phải từ 0-4")
+        
+        if min_combined_score < -5 or min_combined_score > 18:
+            raise HTTPException(status_code=400, detail="min_combined_score phải từ -5 đến 18")
+        
+        # Thực hiện market scan với cache
+        scan_result = cache_market_scan(
+            category=category,
+            min_gti_score=min_gti_score,
+            min_combined_score=min_combined_score
+        )
+        
+        # Kiểm tra lỗi
+        if "error" in scan_result:
+            raise HTTPException(status_code=400, detail=scan_result["error"])
+        
+        # Áp dụng limit nếu có
+        results = scan_result["scan_results"]
+        if limit and limit > 0:
+            results = results[:limit]
+        
+        # Chuẩn bị response
+        response = {
+            "market_scan_results": {
+                "qualified_stocks": results,
+                "total_qualified": len(scan_result["scan_results"]),
+                "returned_count": len(results),
+                "scan_criteria": {
+                    "category": category,
+                    "min_gti_score": min_gti_score,
+                    "min_combined_score": min_combined_score,
+                    "limit_applied": limit
+                }
+            },
+            "category_info": scan_result["category_info"],
+            "execution_statistics": scan_result["statistics"],
+            "market_overview": {
+                "scan_time": scan_result["scan_timestamp"],
+                "performance_summary": f"Quét {scan_result['statistics']['total_scanned']} mã trong {scan_result['statistics']['execution_time_seconds']}s",
+                "success_rate": round(scan_result["statistics"]["success_count"] / scan_result["statistics"]["total_scanned"] * 100, 1) if scan_result["statistics"]["total_scanned"] > 0 else 0
+            },
+            "api_info": {
+                "endpoint": "market-scan",
+                "version": "1.0.0",
+                "description": "🔍 GTI Market Scanner - Quét thị trường tự động"
+            }
+        }
+        
+        return response
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Lỗi market scan: {str(e)}")
+
+@app.get("/market-scan/vn30")
+def market_scan_vn30_quick(min_gti_score: int = 3, min_combined_score: int = 4):
+    """
+    🎯 QUICK VN30 SCAN - Quét nhanh VN30 với tiêu chí cao
+    
+    Returns:
+        Top VN30 stocks đạt tiêu chí cao
+    """
+    try:
+        scan_result = market_scan_by_category(
+            category="vn30",
+            min_gti_score=min_gti_score,
+            min_combined_score=min_combined_score
+        )
+        
+        results = scan_result["scan_results"]
+        
+        return {
+            "vn30_scan": {
+                "qualified_stocks": results,
+                "total_qualified": len(results),
+                "scan_criteria": {
+                    "focus": "VN30 - Blue chips",
+                    "min_gti_score": min_gti_score,
+                    "min_combined_score": min_combined_score
+                }
+            },
+            "quick_summary": {
+                "top_3_picks": results[:3] if len(results) >= 3 else results,
+                "qualification_rate": f"{len(results)}/30 VN30 stocks",
+                "market_sentiment": "Tích cực" if len(results) >= 5 else "Thận trọng" if len(results) >= 2 else "Yếu"
+            },
+            "execution_time": scan_result["statistics"]["execution_time_seconds"],
+            "scan_timestamp": scan_result["scan_timestamp"]
+        }
+        
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Lỗi VN30 scan: {str(e)}")
+
+@app.get("/market-scan/top-picks")
+def market_scan_top_picks_endpoint(limit: int = 15):
+    """
+    🏆 TOP PICKS - Lấy top mã cổ phiếu tốt nhất từ tất cả sectors
+    
+    Args:
+        limit: Số lượng top picks cần trả về (mặc định 15)
+    
+    Returns:
+        Top picks với phân tích chi tiết và khuyến nghị
+        
+    Sector-based approach:
+        - Quick mode: Quét VN30 + top 10 từ mỗi sector (~130 mã)
+        - Normal mode: Quét VN30 + top 20 từ mỗi sector (~230 mã)
+        - An toàn hơn, tránh rate limiting, coverage đầy đủ các ngành
+    """
+    try:
+        if limit < 1 or limit > 50:
+            raise HTTPException(status_code=400, detail="Limit phải từ 1-50")
+        
+        top_picks_result = market_scan_top_picks(limit=limit)
+        
+        if "message" in top_picks_result:
+            return {
+                "message": top_picks_result["message"],
+                "scan_info": top_picks_result["scan_info"]
+            }
+        
+        return {
+            "top_picks_analysis": {
+                "top_stocks": top_picks_result["top_picks"],
+                "categorized_by_strength": top_picks_result["categorized_picks"],
+                "sector_distribution": top_picks_result["sector_distribution"],
+                "market_summary": top_picks_result["summary"]
+            },
+            "investment_recommendation": top_picks_result["recommendation"],
+            "scan_performance": top_picks_result["scan_info"],
+            "usage_guide": {
+                "very_strong_stocks": "Cân nhắc mua với tỷ trọng cao",
+                "strong_stocks": "Theo dõi và mua khi có pullback", 
+                "moderate_stocks": "Chờ tín hiệu rõ ràng hơn",
+                "risk_management": "Luôn đặt stop-loss 5-8%"
+            },
+            "scan_timestamp": top_picks_result["scan_timestamp"]
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Lỗi top picks: {str(e)}")
+
+@app.get("/market-scan/sector/{sector}")
+def market_scan_by_sector(
+    sector: str,
+    min_gti_score: int = 2,
+    min_combined_score: int = 3
+):
+    """
+    🏢 SECTOR SCAN - Quét theo ngành cụ thể
+    
+    Args:
+        sector: Tên ngành (banking, real_estate, technology, manufacturing, etc.)
+        min_gti_score: Điểm GTI tối thiểu
+        min_combined_score: Điểm tổng hợp tối thiểu
+    
+    Returns:
+        Kết quả scan theo ngành với phân tích so sánh
+    """
+    try:
+        # Validate sector
+        available_sectors = list(GTIConfig.SECTOR_STOCKS.keys())
+        if sector.lower() not in available_sectors:
+            raise HTTPException(
+                status_code=400, 
+                detail=f"Ngành '{sector}' không hợp lệ. Các ngành có sẵn: {available_sectors}"
+            )
+        
+        scan_result = market_scan_by_category(
+            category=sector.lower(),
+            min_gti_score=min_gti_score,
+            min_combined_score=min_combined_score
+        )
+        
+        results = scan_result["scan_results"]
+        sector_stocks = GTIConfig.SECTOR_STOCKS[sector.lower()]
+        
+        return {
+            "sector_analysis": {
+                "sector_name": sector.upper(),
+                "qualified_stocks": results,
+                "qualification_stats": {
+                    "qualified_count": len(results),
+                    "total_in_sector": len(sector_stocks),
+                    "qualification_rate": f"{len(results)}/{len(sector_stocks)}",
+                    "percentage": round(len(results) / len(sector_stocks) * 100, 1) if len(sector_stocks) > 0 else 0
+                }
+            },
+            "sector_performance": {
+                "top_performer": results[0] if results else None,
+                "average_score": round(sum([s["combined_score"] for s in results]) / len(results), 2) if results else 0,
+                "score_distribution": {
+                    "excellent": len([s for s in results if s["combined_score"] >= 6]),
+                    "good": len([s for s in results if 4 <= s["combined_score"] < 6]),
+                    "fair": len([s for s in results if 2 <= s["combined_score"] < 4])
+                }
+            },
+            "execution_info": scan_result["statistics"],
+            "scan_timestamp": scan_result["scan_timestamp"]
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Lỗi sector scan: {str(e)}")
+
+@app.get("/market-scan/custom")
+def market_scan_custom_list(
+    stocks: str,
+    min_gti_score: int = 2,
+    min_combined_score: int = 3
+):
+    """
+    🎯 CUSTOM SCAN - Quét danh sách mã tùy chỉnh
+    
+    Args:
+        stocks: Danh sách mã cổ phiếu cách nhau bởi dấu phẩy (VD: FPT,VIC,HPG,VCB)
+        min_gti_score: Điểm GTI tối thiểu
+        min_combined_score: Điểm tổng hợp tối thiểu
+    
+    Returns:
+        Kết quả scan cho danh sách tùy chỉnh
+    """
+    try:
+        # Parse stock list
+        stock_list = [stock.strip().upper() for stock in stocks.split(",") if stock.strip()]
+        
+        if not stock_list:
+            raise HTTPException(status_code=400, detail="Danh sách mã cổ phiếu không được để trống")
+        
+        if len(stock_list) > 50:
+            raise HTTPException(status_code=400, detail="Tối đa 50 mã cổ phiếu trong một lần scan")
+        
+        print(f"🎯 Custom scan cho {len(stock_list)} mã: {stock_list}")
+        
+        # Thực hiện scan
+        scan_result = market_scan_parallel(
+            stock_list=stock_list,
+            min_gti_score=min_gti_score,
+            min_combined_score=min_combined_score,
+            max_workers=GTIConfig.MARKET_SCAN_BATCH_SIZE,
+            timeout=GTIConfig.MARKET_SCAN_TIMEOUT
+        )
+        
+        results = scan_result["scan_results"]
+        
+        return {
+            "custom_scan_results": {
+                "input_stocks": stock_list,
+                "qualified_stocks": results,
+                "scan_summary": {
+                    "input_count": len(stock_list),
+                    "qualified_count": len(results),
+                    "success_rate": f"{scan_result['statistics']['success_count']}/{len(stock_list)}",
+                    "qualification_rate": f"{len(results)}/{len(stock_list)}"
+                }
+            },
+            "performance_ranking": {
+                "top_3": results[:3] if len(results) >= 3 else results,
+                "worst_qualified": results[-1] if results else None
+            },
+            "execution_statistics": scan_result["statistics"],
+            "errors": scan_result["errors"] if scan_result["errors"] else None,
+            "scan_timestamp": scan_result["scan_timestamp"]
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Lỗi custom scan: {str(e)}")
+
+@app.get("/market-scan/quick-check/{stock}")
+def quick_check_single_stock(stock: str):
+    """
+    ⚡ QUICK CHECK - Kiểm tra nhanh một mã có đạt tiêu chí GTI không
+    
+    Args:
+        stock: Mã cổ phiếu cần kiểm tra
+    
+    Returns:
+        Kết quả nhanh với điểm số và đánh giá
+    """
+    try:
+        result = scan_single_stock(
+            stock_symbol=stock.upper(),
+            min_gti_score=0,  # Không lọc để luôn có kết quả
+            min_combined_score=-10  # Để luôn trả về kết quả
+        )
+        
+        if result is None:
+            # Nếu không có kết quả, thử lấy dữ liệu cơ bản
+            try:
+                end_date = datetime.now().strftime("%Y-%m-%d")
+                start_date = (datetime.now() - timedelta(days=365)).strftime("%Y-%m-%d")
+                
+                df = lay_du_lieu_co_phieu_vnstock(stock.upper(), start_date, end_date)
+                if df is None or df.empty:
+                    raise HTTPException(status_code=404, detail=f"Không tìm thấy dữ liệu cho mã {stock}")
+                
+                df_analyzed = tinh_toan_chi_bao_ky_thuat(df)
+                latest = df_analyzed.iloc[-1]
+                gti_score = int(latest['gti_score']) if pd.notna(latest['gti_score']) else 0
+                
+                return {
+                    "stock_symbol": stock.upper(),
+                    "current_price": round(float(latest['close']), 2),
+                    "gti_score": gti_score,
+                    "quick_evaluation": "Không đạt tiêu chí GTI cơ bản" if gti_score < 2 else "Có tiềm năng",
+                    "recommendation": "AVOID" if gti_score < 2 else "WATCH",
+                    "note": "Chưa có pattern analysis đầy đủ"
+                }
+                
+            except Exception:
+                raise HTTPException(status_code=404, detail=f"Không thể lấy dữ liệu cho mã {stock}")
+        
+        return {
+            "quick_check_result": {
+                "stock_symbol": result["stock_symbol"],
+                "current_price": result["current_price"],
+                "scores": {
+                    "gti_score": result["gti_score"],
+                    "pattern_score": result["pattern_score"]["net"],
+                    "combined_score": result["combined_score"]
+                },
+                "evaluation": result["evaluation"],
+                "key_signals": {
+                    "trend_ok": result["key_metrics"]["gti_trend_check"],
+                    "recent_breakout": result["key_metrics"]["gti_recent_breakout"],
+                    "good_pullback": result["key_metrics"]["gti_is_pullback"],
+                    "near_high": result["key_metrics"]["gti_dist_to_high_percent"] is not None and result["key_metrics"]["gti_dist_to_high_percent"] <= 15
+                }
+            },
+            "quick_summary": f"GTI: {result['gti_score']}/4, Pattern: {result['pattern_score']['bullish']}B/{result['pattern_score']['bearish']}Be, Tổng: {result['combined_score']}",
+            "current_patterns": result["current_patterns"],
+            "check_timestamp": datetime.now().isoformat()
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Lỗi quick check: {str(e)}")
+
+# 🚀 CACHE MANAGEMENT ENDPOINTS
+
+@app.get("/cache/stats")
+def get_cache_stats():
+    """
+    📊 CACHE STATS - Xem thống kê performance của cache
+    
+    Returns:
+        Thống kê chi tiết về cache usage và performance
+    """
+    try:
+        stats = gti_cache.get_stats()
+        
+        return {
+            "cache_statistics": stats,
+            "performance_info": {
+                "cache_enabled": stats.get("cache_enabled", False),
+                "hit_rate": f"{stats.get('total_hits', 0)} hits total",
+                "efficiency": "Good" if stats.get('total_hits', 0) > stats.get('valid_entries', 1) else "Low",
+                "memory_usage": stats.get("memory_usage_estimate", "N/A")
+            },
+            "recommendations": {
+                "cache_working": stats.get("cache_enabled", False),
+                "entries_count": stats.get("total_entries", 0),
+                "expired_cleanup_needed": stats.get("expired_entries", 0) > 10
+            },
+            "timestamp": datetime.now().isoformat()
+        }
+        
+    except Exception as e:
+        return {"error": f"Lỗi lấy cache stats: {str(e)}"}
+
+@app.post("/cache/clear")
+def clear_cache(operation: Optional[str] = None):
+    """
+    🗑️ CACHE CLEAR - Xóa cache để refresh dữ liệu
+    
+    Args:
+        operation: Loại operation cần xóa (None = xóa tất cả)
+    
+    Returns:
+        Confirmation và stats mới
+    """
+    try:
+        old_stats = gti_cache.get_stats()
+        old_count = old_stats.get("total_entries", 0)
+        
+        if operation:
+            gti_cache.invalidate(operation)
+            message = f"Cache cleared for operation: {operation}"
+        else:
+            gti_cache.invalidate()
+            message = "All cache cleared"
+        
+        new_stats = gti_cache.get_stats()
+        new_count = new_stats.get("total_entries", 0)
+        
+        return {
+            "cache_clear_result": {
+                "message": message,
+                "entries_before": old_count,
+                "entries_after": new_count,
+                "entries_removed": old_count - new_count
+            },
+            "current_stats": new_stats,
+            "timestamp": datetime.now().isoformat()
+        }
+        
+    except Exception as e:
+        return {"error": f"Lỗi clear cache: {str(e)}"}
+
+@app.get("/system/performance")
+def get_system_performance():
+    """
+    ⚡ SYSTEM PERFORMANCE - Tổng quan performance của hệ thống
+    
+    Returns:
+        Thông tin performance tổng hợp
+    """
+    try:
+        cache_stats = gti_cache.get_stats()
+        
+        return {
+            "system_performance": {
+                "cache_system": {
+                    "enabled": cache_stats.get("cache_enabled", False),
+                    "total_entries": cache_stats.get("total_entries", 0),
+                    "hit_count": cache_stats.get("total_hits", 0),
+                    "memory_usage": cache_stats.get("memory_usage_estimate", "N/A")
+                },
+                "optimization_settings": {
+                    "market_scan_timeout": f"{GTIConfig.MARKET_SCAN_TIMEOUT}s",
+                    "batch_size": GTIConfig.MARKET_SCAN_BATCH_SIZE,
+                    "single_stock_timeout": f"{GTIConfig.SINGLE_STOCK_TIMEOUT}s",
+                    "chunk_size": GTIConfig.CHUNK_SIZE_FOR_LARGE_SCANS,
+                    "progressive_timeout": GTIConfig.ENABLE_PROGRESSIVE_TIMEOUT,
+                    "quick_mode": GTIConfig.TOP_PICKS_QUICK_MODE
+                },
+                "performance_features": [
+                    "✅ Chunked processing for large scans",
+                    "✅ Progressive timeout scaling",
+                    "✅ In-memory caching system", 
+                    "✅ Optimized worker pool",
+                    "✅ Quick mode for top picks",
+                    "✅ Individual stock result caching"
+                ]
+            },
+            "recommendations": {
+                "use_cache": "Enable caching for repeated requests",
+                "use_quick_mode": "Use quick mode for faster top picks",
+                "batch_requests": "Combine multiple stock checks into custom scans",
+                "limit_results": "Use limit parameter for faster responses"
+            },
+            "timestamp": datetime.now().isoformat()
+        }
+        
+    except Exception as e:
+        return {"error": f"Lỗi system performance: {str(e)}"}

@@ -70,11 +70,34 @@ class GTIConfig:
     CACHE_EXPIRY_MINUTES = 5
     MAX_CONCURRENT_REQUESTS = 10
     
+    # 🔍 Market Scanning Configuration - RATE LIMIT PROTECTED
+    MARKET_SCAN_BATCH_SIZE = 8          # Giảm từ 30 xuống 8 để tránh rate limiting
+    MARKET_SCAN_TIMEOUT = 900           # Tăng timeout lên 15 phút do có rate limiting delays
+    SINGLE_STOCK_TIMEOUT = 30           # Tăng timeout cho từng mã (rate limiter cần thời gian)
+    MIN_GTI_SCORE_FOR_SCAN = 2          # Điểm GTI tối thiểu để lọc
+    MIN_COMBINED_SCORE_FOR_SCAN = 3     # Điểm tổng hợp tối thiểu
+    MAX_RESULTS_RETURN = 50             # Tối đa 50 kết quả trả về
+    
+    # 🛡️ Rate Limiting Protection (NEW)
+    ENABLE_RATE_LIMITING = True         # Bật rate limiting protection
+    RATE_LIMIT_DELAY = 1.0              # Delay tối thiểu giữa các API calls (giây)
+    RATE_LIMIT_MAX_RETRIES = 3          # Số lần retry khi gặp rate limit
+    SEQUENTIAL_SCAN_MODE = False        # Scan tuần tự thay vì parallel (khi cần)
+    
+    # 🚀 Performance Optimization 
+    CHUNK_SIZE_FOR_LARGE_SCANS = 20     # Giảm chunk size để tránh overwhelm API
+    ENABLE_PROGRESSIVE_TIMEOUT = True   # Tăng timeout dần cho scans lớn
+    TOP_PICKS_QUICK_MODE = True         # Mode nhanh cho top picks
+    CACHE_SINGLE_STOCK_RESULTS = True   # Cache kết quả từng mã để giảm API calls
+    
     # 📱 API Endpoints
     ENDPOINTS = {
         "root": "/",
         "basic_analysis": "/phan-tich/{ma_co_phieu}",
         "full_analysis": "/full-analysis/{ma_co_phieu}",
+        "market_scan": "/market-scan",              # 🆕 ENDPOINT MỚI
+        "market_scan_vn30": "/market-scan/vn30",    # 🆕 SCAN VN30
+        "market_scan_custom": "/market-scan/custom", # 🆕 SCAN CUSTOM LIST
         "gti_info": "/gti-info",
         "patterns_info": "/patterns-info",
         "docs": "/docs",
@@ -91,6 +114,119 @@ class GTIConfig:
     
     # 🔍 Common Stock Symbols for Quick Testing
     POPULAR_STOCKS = ["FPT", "VIC", "VHM", "HPG", "VCB", "BID", "MWG", "VNM"]
+    
+    # 🎯 Sector Classification - Expanded to ~40 stocks per sector
+    SECTOR_STOCKS = {
+        "banking": [
+            # Big banks
+            "VCB", "BID", "CTG", "VPB", "TCB", "ACB", "MBB", "TPB", "HDB", "STB",
+            # Medium banks
+            "VIB", "SHB", "EIB", "LPB", "SSB", "OCB", "MSB", "NVB", "VBB", "ABB",
+            # Smaller banks
+            "BAB", "BVB", "CBB", "IVB", "KLB", "NAB", "PGB", "SGB", "TLB", "VDB",
+            # Financial services
+            "BFC", "CFC", "FID", "PSI", "SVC", "TVD", "VFS", "WSS", "ASA", "BIC"
+        ],
+        
+        "real_estate": [
+            # Large developers
+            "VHM", "VIC", "VRE", "NVL", "DXG", "KDH", "HDG", "BCM", "DGC", "PDR",
+            # Medium developers
+            "QCG", "NLG", "HNG", "CEO", "IJC", "DIG", "AGG", "CII", "HDC", "IDI",
+            # Construction & materials
+            "CTD", "HBC", "ROS", "PC1", "LCG", "CKG", "VCG", "FCN", "SZC", "SCG",
+            # Infrastructure
+            "VGC", "D2D", "TDH", "SZL", "NBB", "TTC", "THG", "MVN", "KBC", "HDG"
+        ],
+        
+        "technology": [
+            # IT Services
+            "FPT", "CMG", "EFI", "ITD", "VTI", "SAM", "CMT", "VGI", "CTR", "DTD",
+            # Telecom
+            "VGI", "ELC", "MFS", "SGT", "NET", "FOX", "VNT", "VTC", "ICT", "AME",
+            # Tech hardware
+            "MWG", "DGW", "VCS", "QTC", "DST", "TNG", "MCV", "SPI", "VPH", "PHC",
+            # Software & digital
+            "VCI", "BSI", "VND", "HCM", "CTS", "ORS", "APS", "VIX", "DSC", "VSI"
+        ],
+        
+        "manufacturing": [
+            # Steel & metals
+            "HPG", "HSG", "NKG", "TVN", "SMC", "VGS", "POM", "TIS", "VCA", "DTL",
+            # Chemicals & materials
+            "DGC", "CSV", "AAA", "DPM", "BMP", "DGW", "SFG", "TYA", "VFG", "PVT",
+            # Electronics
+            "SAM", "VTK", "ELC", "VHC", "PHR", "MCV", "DST", "VCS", "SPI", "VPH",
+            # Machinery
+            "DHC", "DMC", "HII", "VMC", "THI", "VTO", "GMC", "VRC", "CKG", "VGC"
+        ],
+        
+        "consumer": [
+            # Retail
+            "MWG", "FRT", "PNJ", "DGW", "VCS", "QTC", "GMD", "DST", "VEA", "PET",
+            # Food & beverages
+            "VNM", "MSN", "SAB", "MCH", "VHC", "LAF", "QNS", "DBC", "VCF", "FMC",
+            # Personal care
+            "TNG", "UNI", "NET", "PHR", "DHP", "YEG", "MCV", "VPH", "PHC", "IMP",
+            # Tourism & entertainment
+            "VJC", "HVN", "VNG", "DAH", "VTO", "TCO", "FIT", "ASM", "TSC", "CTC"
+        ],
+        
+        "energy": [
+            # Oil & gas
+            "GAS", "PLX", "PVS", "PVD", "BSR", "PVC", "PVB", "PSH", "PVG", "GEG",
+            # Power generation
+            "POW", "NT2", "PC1", "EVN", "VNE", "SBA", "TBC", "HND", "QTP", "MVN",
+            # Renewable energy
+            "REE", "GEG", "SBA", "TBC", "HND", "QTP", "MVN", "NBC", "DTK", "BWE",
+            # Mining
+            "SVN", "MVN", "DTK", "TDW", "NBC", "SMA", "BMC", "TKU", "HSL", "TMC"
+        ],
+        
+        "securities": [
+            # Large securities
+            "SSI", "VCI", "VND", "HCM", "BSI", "CTS", "MBS", "VDS", "SHS", "TVS",
+            # Medium securities
+            "ORS", "APS", "VIX", "AGR", "FTS", "VFS", "DSC", "VSI", "PHS", "WSS",
+            # Asset management
+            "VFG", "DLG", "PSI", "SVC", "BVS", "IFS", "VIG", "DXS", "VEA", "TVD",
+            # Investment
+            "IDI", "IJC", "CEO", "VGI", "VPG", "VRC", "VMG", "VSC", "VTB", "VHL"
+        ],
+        
+        "construction": [
+            # Construction
+            "ROS", "CTD", "HBC", "LCG", "PC1", "CKG", "VCG", "FCN", "SZC", "SCG",
+            # Infrastructure
+            "CII", "HDC", "TDH", "SZL", "NBB", "TTC", "THG", "MVN", "D2D", "VGC",
+            # Materials
+            "BMP", "CSV", "DPM", "HPG", "HSG", "NKG", "TVN", "SMC", "VGS", "TIS",
+            # Engineering
+            "DHC", "DMC", "HII", "VMC", "THI", "GMC", "VRC", "LAS", "SEC", "SVC"
+        ],
+        
+        "utilities": [
+            # Power & electricity
+            "POW", "REE", "GEG", "NT2", "PC1", "EVN", "VNE", "SBA", "TBC", "HND",
+            # Water & waste
+            "TDW", "NBC", "BWE", "SMA", "BMC", "TKU", "HSL", "TMC", "DTK", "MVN",
+            # Transport utilities
+            "VTO", "GMD", "VJC", "HVN", "TSC", "TCO", "CTC", "VOS", "VST", "PVT",
+            # Other utilities
+            "QTP", "MVN", "NBC", "DTK", "BWE", "SMA", "BMC", "TKU", "HSL", "TMC"
+        ],
+        
+        "transportation": [
+            # Airlines
+            "VJC", "HVN", "VNA", "ASM", "FIT", "TSC", "TCO", "CTC", "VOS", "VST",
+            # Shipping & logistics
+            "VTO", "GMD", "VST", "VOS", "PVT", "VIP", "HAH", "SVI", "HAG", "HAS",
+            # Port services
+            "VIP", "HAH", "SVI", "HAG", "HAS", "CLL", "PHP", "DVP", "GMC", "VRC",
+            # Transportation infrastructure
+            "CII", "VGC", "D2D", "TDH", "NBB", "TTC", "THG", "MVN", "LAS", "SEC"
+        ]
+    }
     
     @classmethod
     def get_date_range(cls, days_back: int = None) -> tuple:
@@ -142,6 +278,49 @@ class GTIConfig:
                 "message": "TIÊU CỰC - TRÁNH XA",
                 "action": "AVOID"
             }
+    
+    @classmethod
+    def get_stock_list_by_type(cls, list_type: str = "vn30") -> list:
+        """
+        Get stock list by type - SECTOR-BASED APPROACH
+        """
+        if list_type.lower() == "vn30":
+            return cls.VN30_STOCKS
+        elif list_type.lower() == "popular":
+            return cls.POPULAR_STOCKS
+        elif list_type.lower() in cls.SECTOR_STOCKS:
+            return cls.SECTOR_STOCKS[list_type.lower()]
+        else:
+            return cls.VN30_STOCKS  # Default
+    
+    @classmethod
+    def get_all_sectors_combined(cls, limit_per_sector: int = None) -> list:
+        """
+        Get stocks from all sectors combined - for top picks scanning
+        """
+        all_stocks = []
+        for sector_name, stocks in cls.SECTOR_STOCKS.items():
+            if limit_per_sector:
+                all_stocks.extend(stocks[:limit_per_sector])
+            else:
+                all_stocks.extend(stocks)
+        
+        # Remove duplicates while preserving order
+        seen = set()
+        unique_stocks = []
+        for stock in all_stocks:
+            if stock not in seen:
+                seen.add(stock)
+                unique_stocks.append(stock)
+        
+        return unique_stocks
+    
+    @classmethod
+    def get_all_sectors(cls) -> dict:
+        """
+        Get all sector information
+        """
+        return cls.SECTOR_STOCKS
 
 # 🌍 Environment-specific configurations
 class DevelopmentConfig(GTIConfig):
