@@ -27,6 +27,9 @@ from config import GTIConfig
 # 🚀 Import Cache Manager
 from cache_manager import gti_cache, cache_stock_analysis, cache_market_scan
 
+# 🔄 Import Task Manager for Async Processing
+from task_manager import task_manager
+
 # Khởi tạo ứng dụng FastAPI
 app = FastAPI(
     title="🚀 GTI Stock Analysis API",
@@ -70,6 +73,12 @@ def read_root():
                 "/market-scan/custom": "🎯 Quét danh sách tùy chỉnh",
                 "/market-scan/quick-check/{stock}": "⚡ Kiểm tra nhanh một mã"
             },
+            "async_market_scanning": {
+                "POST /market-scan/start": "🚀 Bắt đầu tác vụ quét bất đồng bộ (tránh timeout)",
+                "GET /market-scan/status/{task_id}": "🔍 Kiểm tra trạng thái tác vụ",
+                "GET /market-scan/result/{task_id}": "📊 Lấy kết quả khi hoàn thành",
+                "/tasks/stats": "📊 Thống kê task manager"
+            },
             "system_info": {
                 "/gti-info": "Thông tin về hệ thống GTI",
                 "/patterns-info": "Thông tin về 16 patterns (12 basic + 4 large)"
@@ -77,11 +86,18 @@ def read_root():
         },
         "vi_du_su_dung": {
             "phan_tich_don_le": "/full-analysis/FPT",
-            "quet_vn30": "/market-scan/vn30",
-            "top_picks": "/market-scan/top-picks?limit=10",
+            "quet_vn30_nhanh": "/market-scan/vn30",
+            "top_picks_dong_bo": "/market-scan/top-picks?limit=10",
             "quet_ngan_hang": "/market-scan/sector/banking",
-            "quet_tuy_chinh": "/market-scan/custom?stocks=FPT,VIC,HPG,VCB",
+            "quet_tuy_chinh_nho": "/market-scan/custom?stocks=FPT,VIC,HPG,VCB",
             "kiem_tra_nhanh": "/market-scan/quick-check/FPT"
+        },
+        "vi_du_async": {
+            "bat_dau_top_picks": "POST /market-scan/start?task_type=top_picks&limit=15",
+            "bat_dau_sector_scan": "POST /market-scan/start?task_type=sector_scan&sector=banking",
+            "kiem_tra_trang_thai": "GET /market-scan/status/{task_id}",
+            "lay_ket_qua": "GET /market-scan/result/{task_id}",
+            "note": "🚀 Dùng async cho scans lớn (>20 mã) để tránh timeout"
         },
         "danh_muc_ho_tro": {
             "stock_lists": ["vn30", "popular"],
@@ -1054,3 +1070,288 @@ def get_system_performance():
         
     except Exception as e:
         return {"error": f"Lỗi system performance: {str(e)}"}
+
+# 🔄 ASYNCHRONOUS MARKET SCANNING ENDPOINTS
+# These endpoints implement the asynchronous processing pattern from upgrade.md
+
+@app.post("/market-scan/start")
+def start_market_scan_task(
+    task_type: str,
+    category: Optional[str] = None,
+    sector: Optional[str] = None,
+    stocks: Optional[str] = None,
+    limit: Optional[int] = None,
+    min_gti_score: int = 2,
+    min_combined_score: int = 3
+):
+    """
+    🚀 START ASYNC TASK - Bắt đầu tác vụ quét thị trường bất đồng bộ
+    
+    Args:
+        task_type: Loại task (top_picks, sector_scan, category_scan, custom_scan)
+        category: Danh mục cho category_scan (vn30, popular, etc.)
+        sector: Ngành cho sector_scan (banking, technology, etc.)
+        stocks: Danh sách mã cho custom_scan (VD: FPT,VIC,HPG)
+        limit: Giới hạn kết quả cho top_picks
+        min_gti_score: Điểm GTI tối thiểu (0-4)
+        min_combined_score: Điểm tổng hợp tối thiểu
+    
+    Returns:
+        task_id để theo dõi tiến trình
+        
+    Example requests:
+        POST /market-scan/start?task_type=top_picks&limit=15
+        POST /market-scan/start?task_type=sector_scan&sector=banking
+        POST /market-scan/start?task_type=category_scan&category=vn30
+        POST /market-scan/start?task_type=custom_scan&stocks=FPT,VIC,HPG,VCB
+    """
+    try:
+        # Validate task_type
+        valid_task_types = ["top_picks", "sector_scan", "category_scan", "custom_scan"]
+        if task_type not in valid_task_types:
+            raise HTTPException(
+                status_code=400, 
+                detail=f"task_type không hợp lệ. Các loại hỗ trợ: {valid_task_types}"
+            )
+        
+        # Prepare parameters based on task type
+        parameters = {
+            "min_gti_score": min_gti_score,
+            "min_combined_score": min_combined_score
+        }
+        
+        if task_type == "top_picks":
+            parameters["limit"] = limit or 15
+            
+        elif task_type == "sector_scan":
+            if not sector:
+                raise HTTPException(status_code=400, detail="sector là bắt buộc cho sector_scan")
+            available_sectors = list(GTIConfig.SECTOR_STOCKS.keys())
+            if sector.lower() not in available_sectors:
+                raise HTTPException(
+                    status_code=400,
+                    detail=f"Ngành '{sector}' không hợp lệ. Các ngành có sẵn: {available_sectors}"
+                )
+            parameters["sector"] = sector.lower()
+            
+        elif task_type == "category_scan":
+            if not category:
+                raise HTTPException(status_code=400, detail="category là bắt buộc cho category_scan")
+            parameters["category"] = category.lower()
+            
+        elif task_type == "custom_scan":
+            if not stocks:
+                raise HTTPException(status_code=400, detail="stocks là bắt buộc cho custom_scan")
+            stock_list = [s.strip().upper() for s in stocks.split(",") if s.strip()]
+            if len(stock_list) > 50:
+                raise HTTPException(status_code=400, detail="Tối đa 50 mã cổ phiếu trong một lần scan")
+            parameters["stocks"] = stocks
+        
+        # Create and start task
+        task_id = task_manager.create_task(task_type, parameters)
+        
+        return {
+            "status": "processing_started",
+            "task_id": task_id,
+            "task_type": task_type,
+            "parameters": parameters,
+            "message": "Tác vụ đã được bắt đầu. Sử dụng task_id để kiểm tra tiến trình.",
+            "next_steps": {
+                "check_status": f"GET /market-scan/status/{task_id}",
+                "get_result": f"GET /market-scan/result/{task_id}"
+            },
+            "estimated_time": {
+                "top_picks": "2-5 phút",
+                "sector_scan": "1-3 phút", 
+                "category_scan": "30s-2 phút",
+                "custom_scan": "10s-2 phút tùy số lượng mã"
+            }.get(task_type, "1-5 phút"),
+            "timestamp": datetime.now().isoformat()
+        }
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Lỗi khởi tạo task: {str(e)}")
+
+@app.get("/market-scan/status/{task_id}")
+def get_market_scan_status(task_id: str):
+    """
+    🔍 CHECK STATUS - Kiểm tra trạng thái tác vụ bất đồng bộ
+    
+    Args:
+        task_id: ID của task cần kiểm tra
+    
+    Returns:
+        Thông tin trạng thái hiện tại của task
+        
+    Possible statuses:
+        - pending: Đang chờ xử lý
+        - running: Đang thực hiện 
+        - completed: Hoàn thành (có thể lấy kết quả)
+        - failed: Thất bại (có thông tin lỗi)
+        - expired: Đã hết hạn (>1 tiếng)
+    """
+    try:
+        status = task_manager.get_task_status(task_id)
+        
+        if not status:
+            raise HTTPException(status_code=404, detail=f"Không tìm thấy task với ID: {task_id}")
+        
+        response = {
+            "task_status": status,
+            "timestamp": datetime.now().isoformat()
+        }
+        
+        # Add appropriate next action based on status
+        if status["status"] == "running":
+            response["message"] = "Tác vụ đang chạy, vui lòng đợi..."
+            response["action"] = "Kiểm tra lại sau 10-30 giây"
+            
+        elif status["status"] == "completed":
+            response["message"] = "Tác vụ hoàn thành! Có thể lấy kết quả."
+            response["action"] = f"GET /market-scan/result/{task_id}"
+            
+        elif status["status"] == "failed":
+            response["message"] = "Tác vụ thất bại."
+            response["action"] = "Kiểm tra lỗi và thử tạo task mới"
+            
+        elif status["status"] == "expired":
+            response["message"] = "Tác vụ đã hết hạn."
+            response["action"] = "Tạo task mới để thực hiện"
+            
+        else:  # pending
+            response["message"] = "Tác vụ đang chờ xử lý..."
+            response["action"] = "Kiểm tra lại trong vài giây"
+        
+        return response
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Lỗi kiểm tra status: {str(e)}")
+
+@app.get("/market-scan/result/{task_id}")
+def get_market_scan_result(task_id: str):
+    """
+    📊 GET RESULT - Lấy kết quả của tác vụ đã hoàn thành
+    
+    Args:
+        task_id: ID của task cần lấy kết quả
+    
+    Returns:
+        Kết quả phân tích đầy đủ từ task đã hoàn thành
+        
+    Note:
+        - Chỉ có thể lấy kết quả khi status = "completed"
+        - Kết quả sẽ bị xóa sau 1 tiếng để tiết kiệm bộ nhớ
+    """
+    try:
+        # First check status
+        status = task_manager.get_task_status(task_id)
+        
+        if not status:
+            raise HTTPException(status_code=404, detail=f"Không tìm thấy task với ID: {task_id}")
+        
+        if status["status"] != "completed":
+            current_status = status["status"]
+            if current_status == "running":
+                raise HTTPException(status_code=202, detail="Tác vụ vẫn đang chạy. Vui lòng đợi.")
+            elif current_status == "failed":
+                raise HTTPException(status_code=400, detail=f"Tác vụ thất bại: {status.get('error', 'Unknown error')}")
+            elif current_status == "expired":
+                raise HTTPException(status_code=410, detail="Tác vụ đã hết hạn. Vui lòng tạo task mới.")
+            else:
+                raise HTTPException(status_code=202, detail=f"Tác vụ chưa hoàn thành. Status: {current_status}")
+        
+        # Get result
+        result = task_manager.get_task_result(task_id)
+        
+        if not result:
+            raise HTTPException(status_code=404, detail="Không tìm thấy kết quả cho task này.")
+        
+        # Format response with metadata
+        response = {
+            "task_info": {
+                "task_id": task_id,
+                "task_type": result["task_type"],
+                "parameters": result["parameters"],
+                "execution_time": result.get("execution_time"),
+                "completed_at": status["completed_at"]
+            },
+            "scan_results": result["scan_result"],
+            "result_summary": {
+                "success": True,
+                "data_available": True,
+                "result_type": result["task_type"]
+            },
+            "timestamp": datetime.now().isoformat()
+        }
+        
+        # Add task-specific formatting
+        if result["task_type"] == "top_picks":
+            if "top_picks" in result["scan_result"]:
+                response["formatted_results"] = {
+                    "market_overview": "Top picks scan completed successfully",
+                    "top_recommendations": result["scan_result"].get("top_picks", [])[:5],
+                    "total_qualified": len(result["scan_result"].get("top_picks", [])),
+                    "recommendation": result["scan_result"].get("recommendation", {})
+                }
+        
+        elif result["task_type"] in ["sector_scan", "category_scan"]:
+            if "scan_results" in result["scan_result"]:
+                qualified_stocks = result["scan_result"]["scan_results"]
+                response["formatted_results"] = {
+                    "scan_overview": f"{result['task_type']} completed successfully",
+                    "qualified_stocks": qualified_stocks,
+                    "total_qualified": len(qualified_stocks),
+                    "top_3_picks": qualified_stocks[:3] if len(qualified_stocks) >= 3 else qualified_stocks
+                }
+        
+        elif result["task_type"] == "custom_scan":
+            if "scan_results" in result["scan_result"]:
+                qualified_stocks = result["scan_result"]["scan_results"]
+                response["formatted_results"] = {
+                    "scan_overview": "Custom scan completed successfully",
+                    "input_stocks": result["parameters"]["stocks"].split(","),
+                    "qualified_stocks": qualified_stocks,
+                    "qualification_rate": f"{len(qualified_stocks)}/{len(result['parameters']['stocks'].split(','))}"
+                }
+        
+        return response
+        
+    except HTTPException:
+        raise
+    except Exception as e:
+        raise HTTPException(status_code=500, detail=f"Lỗi lấy kết quả: {str(e)}")
+
+# 📊 TASK MANAGEMENT ENDPOINTS
+
+@app.get("/tasks/stats")
+def get_task_manager_stats():
+    """
+    📊 TASK STATS - Xem thống kê của task manager
+    
+    Returns:
+        Thống kê về các task đang chạy và đã hoàn thành
+    """
+    try:
+        stats = task_manager.get_stats()
+        
+        return {
+            "task_manager_stats": stats,
+            "system_info": {
+                "async_processing": "Active",
+                "background_workers": stats["executor_info"]["max_workers"],
+                "total_tasks_handled": stats["total_tasks"]
+            },
+            "recommendations": {
+                "optimal_usage": "Sử dụng async endpoints cho scan lớn (>20 mã)",
+                "check_interval": "Kiểm tra status mỗi 15-30 giây",
+                "task_cleanup": "Tasks tự động cleanup sau 1 tiếng"
+            },
+            "timestamp": datetime.now().isoformat()
+        }
+        
+    except Exception as e:
+        return {"error": f"Lỗi lấy task stats: {str(e)}"}
